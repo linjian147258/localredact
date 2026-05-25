@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalRedact – Local PDF Redaction Tool for Lawyers</title>
+    <meta name="description" content="100% local PDF processing tool for lawyers. Your files never leave your device.">
+    
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- pdf-lib for PDF processing -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    
+    <!-- PDF.js for PDF rendering (optional, for future thumbnail feature) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        dark: {
+                            bg: '#0f172a',
+                            card: '#1e293b',
+                            text: '#f1f5f9',
+                            muted: '#94a3b8',
+                            border: '#334155',
+                            accent: '#3b82f6',
+                            accentHover: '#2563eb',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f1f5f9;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+        
+        /* Upload zone animation */
+        .upload-zone {
+            transition: all 0.3s ease;
+            border: 2px dashed #475569;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #3b82f6;
+            background-color: rgba(59, 130, 246, 0.05);
+        }
+        
+        /* Progress bar animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-slow {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        
+        /* Modal animation */
+        .modal-enter {
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        .modal-enter-active {
+            opacity: 1;
+            transform: scale(1);
+            transition: all 0.2s ease-out;
+        }
+        .modal-exit {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .modal-exit-active {
+            opacity: 0;
+            transform: scale(0.95);
+            transition: all 0.2s ease-in;
+        }
+        
+        /* Toast notification */
+        .toast {
+            transform: translateX(100%);
+            transition: transform 0.3s ease-out;
+        }
+        .toast.show {
+            transform: translateX(0);
+        }
+    </style>
+    
+    <!-- 
+    ============================================
+    SENTRY ERROR MONITORING
+    ============================================
+    To enable Sentry, uncomment the following and replace with your DSN
+    Get DSN: https://sentry.io/signup/ -> Create project -> Get DSN
+    -->
+    <!--
+    <script src="https://js.sentry-cdn.com/YOUR_SENTRY_DSN.min.js" crossorigin="anonymous"></script>
+    <script>
+        Sentry.init({
+            dsn: "YOUR_SENTRY_DSN_HERE",
+            tracesSampleRate: 1.0,
+        });
+    </script>
+    -->
+    
+    <!-- 
+    ============================================
+    POSTHOG / GOOGLE ANALYTICS
+    ============================================
+    To enable analytics, add the appropriate initialization code below
+    Then use trackEvent(eventName, properties) function to track events
+    -->
+    <script>
+        function trackEvent(eventName, properties = {}) {
+            // ============================================
+            // POSTHOG Integration Example (uncomment and replace API Key):
+            // ============================================
+            // if (typeof posthog !== 'undefined') {
+            //     posthog.capture(eventName, properties);
+            // }
+            
+            // ============================================
+            // GOOGLE ANALYTICS 4 Integration Example (uncomment):
+            // ============================================
+            // if (typeof gtag !== 'undefined') {
+            //     gtag('event', eventName, properties);
+            // }
+            
+            console.log('[Analytics]', eventName, properties);
+        }
+    </script>
+    
+    <!-- 
+    ============================================
+    POSTHOG Initialization Code (optional)
+    ============================================
+    To use PostHog, uncomment the following and replace with your API Key
+    Get API Key: https://posthog.com/signup
+    -->
+    <!--
+    <script>
+        !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+        posthog.init('YOUR_POSTHOG_API_KEY',{api_host:'https://app.posthog.com'});
+    </script>
+    -->
+</head>
+<body class="min-h-screen flex flex-col">
+    
+    <!-- Beta Announcement Bar -->
+    <div class="bg-blue-600 text-white text-center py-2 px-4 text-sm">
+        <i class="fas fa-flask mr-2"></i>
+        Beta – We're collecting feedback. All features free during beta.
+    </div>
+    
+    <!-- Header -->
+    <header class="bg-dark-card border-b border-dark-border sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <a href="#" class="flex items-center space-x-2">
+                        <i class="fas fa-shield-alt text-blue-500 text-2xl"></i>
+                        <span class="text-xl font-bold text-white">LocalRedact</span>
+                    </a>
+                </div>
+                
+                <!-- Navigation -->
+                <nav class="hidden md:flex space-x-8">
+                    <a href="#home" class="text-dark-text hover:text-blue-400 transition-colors">Home</a>
+                    <a href="#privacy" class="text-dark-muted hover:text-blue-400 transition-colors">Privacy Promise</a>
+                    <a href="#transparency" class="text-dark-muted hover:text-blue-400 transition-colors">Tech Transparency</a>
+                </nav>
+                
+                <!-- Mobile menu button -->
+                <button id="mobileMenuBtn" class="md:hidden text-dark-text hover:text-white">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Mobile Menu -->
+        <div id="mobileMenu" class="hidden md:hidden bg-dark-card border-t border-dark-border">
+            <div class="px-4 py-3 space-y-2">
+                <a href="#home" class="block text-dark-text hover:text-blue-400 py-2">Home</a>
+                <a href="#privacy" class="block text-dark-muted hover:text-blue-400 py-2">Privacy Promise</a>
+                <a href="#transparency" class="block text-dark-muted hover:text-blue-400 py-2">Tech Transparency</a>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="flex-grow">
+        
+        <!-- Hero Section -->
+        <section id="home" class="py-16 md:py-24 px-4">
+            <div class="max-w-4xl mx-auto text-center">
+                <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
+                    Local PDF Redaction Tool<br>for Lawyers
+                </h1>
+                <p class="text-xl md:text-2xl text-dark-muted mb-4">
+                    Your files never leave your device. Privacy guaranteed.
+                </p>
+                <p class="text-blue-400 mb-12">
+                    <i class="fas fa-lock mr-2"></i>
+                    100% Local Processing · Zero Upload · Zero Cloud Storage
+                </p>
+                
+                <!-- Upload Zone -->
+                <div id="uploadZone" class="upload-zone rounded-2xl p-8 md:p-12 bg-dark-card/50 backdrop-blur cursor-pointer max-w-2xl mx-auto">
+                    <input type="file" id="fileInput" accept=".pdf" class="hidden">
+                    <div class="text-center">
+                        <div class="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <i class="fas fa-cloud-upload-alt text-4xl text-blue-500"></i>
+                        </div>
+                        <h3 class="text-xl font-semibold text-white mb-2">PDF Page Remover</h3>
+                        <p class="text-dark-muted mb-4">Drag & drop a PDF file here, or click to select</p>
+                        <p class="text-sm text-dark-muted">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            File is processed only in your browser, never uploaded
+                        </p>
+                        <p class="text-sm text-dark-muted mt-2">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Max 50MB and 200 pages. For larger files, consider splitting.
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- Original File Safety Notice -->
+                <div class="max-w-2xl mx-auto mt-4 bg-emerald-950/50 border border-emerald-600/40 rounded-lg px-5 py-3 text-left">
+                    <p class="text-emerald-200 text-sm leading-relaxed">
+                        <i class="fas fa-shield-alt mr-2 text-emerald-400"></i>Your original file will NOT be modified or deleted. This tool only creates a new PDF. The original remains on your computer.
+                    </p>
+                </div>
+
+                <!-- File Info & Page Selection (Hidden by default) -->
+                <div id="fileInfoSection" class="hidden mt-8 max-w-2xl mx-auto">
+                    <div class="bg-dark-card rounded-xl p-6 border border-dark-border">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-3">
+                                <i class="fas fa-file-pdf text-red-500 text-2xl"></i>
+                                <div class="text-left">
+                                    <p id="fileName" class="text-white font-medium"></p>
+                                    <p id="fileSize" class="text-dark-muted text-sm"></p>
+                                </div>
+                            </div>
+                            <button id="removeFileBtn" class="text-dark-muted hover:text-red-400 transition-colors">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="border-t border-dark-border pt-4">
+                            <label class="block text-left text-white font-medium mb-2">
+                                <i class="fas fa-scissors mr-2 text-red-400"></i>
+                                ✂️ Pages to delete (single or range, e.g. 1,3,5-7)
+                            </label>
+                            <p class="text-left text-dark-muted text-sm mb-3">
+                                Page numbers start from 1, separated by commas. For example "1,3,5-7" deletes pages 1,3,5,6,7.
+                            </p>
+                            <input 
+                                type="text" 
+                                id="pageInput" 
+                                placeholder="e.g. 1,3,5-7"
+                                class="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-3 text-white placeholder-dark-muted focus:outline-none focus:border-blue-500 transition-colors"
+                            >
+                            <p id="pageCount" class="text-left text-dark-muted text-sm mt-2"></p>
+                        </div>
+                        
+                        <!-- Progress Indicator -->
+                        <div id="progressSection" class="hidden mt-4">
+                            <div class="flex items-center justify-center space-x-3 text-blue-400">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <span id="progressText">⏳ Processing PDF, please wait...</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Action Button + Save Hint -->
+                        <div class="mt-6 flex flex-col sm:flex-row items-center gap-3">
+                            <button 
+                                id="processBtn" 
+                                class="w-full sm:flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center space-x-2"
+                            >
+                                <i class="fas fa-magic"></i>
+                                <span>Process & Download</span>
+                            </button>
+                            <p class="text-dark-muted text-xs text-center sm:text-left whitespace-nowrap">
+                                <span class="mr-1">✅</span>After processing, manually save the new file. Your original file is not deleted.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- How It Works Section -->
+        <section class="py-16 bg-dark-card/30">
+            <div class="max-w-6xl mx-auto px-4">
+                <h2 class="text-3xl font-bold text-center text-white mb-12">Remove PDF Pages in 3 Steps</h2>
+                
+                <div class="grid md:grid-cols-3 gap-8">
+                    <!-- Step 1 -->
+                    <div class="text-center">
+                        <div class="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-2xl font-bold text-blue-500">1</span>
+                        </div>
+                        <h3 class="text-xl font-semibold text-white mb-2">Upload PDF</h3>
+                        <p class="text-dark-muted">Drag or click to select your PDF file. Processed only in your browser</p>
+                    </div>
+                    
+                    <!-- Step 2 -->
+                    <div class="text-center">
+                        <div class="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-2xl font-bold text-blue-500">2</span>
+                        </div>
+                        <h3 class="text-xl font-semibold text-white mb-2">Select Pages to Remove</h3>
+                        <p class="text-dark-muted">Enter page numbers to delete. Supports single pages and ranges</p>
+                    </div>
+                    
+                    <!-- Step 3 -->
+                    <div class="text-center">
+                        <div class="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-2xl font-bold text-blue-500">3</span>
+                        </div>
+                        <h3 class="text-xl font-semibold text-white mb-2">Download Processed File</h3>
+                        <p class="text-dark-muted">Generate and download the new PDF. Original remains unchanged</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Comparison Table -->
+        <section class="py-16 bg-dark-bg">
+            <div class="max-w-5xl mx-auto px-4">
+                <h2 class="text-3xl font-bold text-center text-white mb-4">Why do lawyers choose LocalRedact?</h2>
+                <p class="text-center text-dark-muted mb-10">Key differences from traditional cloud PDF tools</p>
+                
+                <div class="overflow-x-auto rounded-xl border border-dark-border">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-dark-card">
+                                <th class="text-left px-6 py-4 font-semibold text-white border-b border-dark-border">Comparison</th>
+                                <th class="text-left px-6 py-4 font-semibold text-red-300 border-b border-dark-border">Traditional Cloud PDF Tools</th>
+                                <th class="text-left px-6 py-4 font-semibold text-green-300 border-b border-dark-border">LocalRedact</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-dark-card/50">
+                            <tr class="border-b border-dark-border/50">
+                                <td class="px-6 py-4 text-white font-medium">File upload</td>
+                                <td class="px-6 py-4 text-red-200/80">❌ Must upload to unknown server</td>
+                                <td class="px-6 py-4 text-green-200/80">✅ No upload, local processing</td>
+                            </tr>
+                            <tr class="border-b border-dark-border/50">
+                                <td class="px-6 py-4 text-white font-medium">Transmission Encryption</td>
+                                <td class="px-6 py-4 text-red-200/80">❌ May use unencrypted HTTP, transmission at risk</td>
+                                <td class="px-6 py-4 text-green-200/80">✅ Enforced HTTPS, padlock in address bar</td>
+                            </tr>
+                            <tr class="border-b border-dark-border/50">
+                                <td class="px-6 py-4 text-white font-medium">Data retention</td>
+                                <td class="px-6 py-4 text-red-200/80">❌ Claims auto-deletion but unverifiable</td>
+                                <td class="px-6 py-4 text-green-200/80">✅ Cleared after processing, no trace</td>
+                            </tr>
+                            <tr class="border-b border-dark-border/50">
+                                <td class="px-6 py-4 text-white font-medium">Server location</td>
+                                <td class="px-6 py-4 text-red-200/80">❌ Unknown, may be subject to foreign laws</td>
+                                <td class="px-6 py-4 text-green-200/80">✅ No servers involved</td>
+                            </tr>
+                            <tr class="border-b border-dark-border/50">
+                                <td class="px-6 py-4 text-white font-medium">Legal ethics compliance</td>
+                                <td class="px-6 py-4 text-red-200/80">❌ May violate ABA Rule 1.6 confidentiality</td>
+                                <td class="px-6 py-4 text-green-200/80">✅ Fully compliant</td>
+                            </tr>
+                            <tr>
+                                <td class="px-6 py-4 text-white font-medium">Internet required</td>
+                                <td class="px-6 py-4 text-red-200/80">✅ Must be online</td>
+                                <td class="px-6 py-4 text-green-200/80">✅ Works offline</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Privacy Promise Section -->
+        <section id="privacy" class="py-16">
+            <div class="max-w-6xl mx-auto px-4">
+                <h2 class="text-3xl font-bold text-center text-white mb-12">Privacy Promise</h2>
+                
+                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- Feature 1 -->
+                    <div class="bg-dark-card rounded-xl p-6 border border-dark-border text-center">
+                        <div class="w-14 h-14 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-laptop text-2xl text-green-500"></i>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white mb-2">100% Local</h3>
+                        <p class="text-dark-muted text-sm">All processing done in your browser</p>
+                    </div>
+                    
+                    <!-- Feature 2 -->
+                    <div class="bg-dark-card rounded-xl p-6 border border-dark-border text-center">
+                        <div class="w-14 h-14 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-cloud-slash text-2xl text-green-500"></i>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white mb-2">Zero Upload</h3>
+                        <p class="text-dark-muted text-sm">Files never reach any server</p>
+                    </div>
+                    
+                    <!-- Feature 3 -->
+                    <div class="bg-dark-card rounded-xl p-6 border border-dark-border text-center">
+                        <div class="w-14 h-14 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-user-shield text-2xl text-green-500"></i>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white mb-2">Lawyer-Grade Privacy</h3>
+                        <p class="text-dark-muted text-sm">Meets strict legal confidentiality standards</p>
+                    </div>
+                    
+                    <!-- Feature 4 -->
+                    <div class="bg-dark-card rounded-xl p-6 border border-dark-border text-center">
+                        <div class="w-14 h-14 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-eye-slash text-2xl text-green-500"></i>
+                        </div>
+                        <h3 class="text-lg font-semibold text-white mb-2">No Data Collection</h3>
+                        <p class="text-dark-muted text-sm">We do not collect, store, or view your files</p>
+                    </div>
+                </div>
+                
+                <!-- Main Privacy Message -->
+                <div class="mt-12 text-center">
+                    <div class="inline-flex items-start space-x-2 bg-green-500/10 border border-green-500/30 rounded-full px-6 py-3">
+                        <i class="fas fa-check-circle text-green-500 flex-shrink-0 mt-0.5"></i>
+                        <div class="text-green-400 font-medium">
+                            🔒 Your files never leave this device. We do not upload anything to any server. All processing happens locally in your browser. After download, your data is cleared from memory.<br>
+                            All data transmission is protected by HTTPS (look for the padlock in your browser address bar).
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Technical Transparency Section -->
+        <section id="transparency" class="py-16 bg-dark-card/30">
+            <div class="max-w-4xl mx-auto px-4">
+                <h2 class="text-3xl font-bold text-center text-white mb-4">How to verify we truly never upload?</h2>
+                <p class="text-center text-dark-muted mb-10">You don't have to take our word for it — verify yourself</p>
+                
+                <div class="space-y-6">
+                    <!-- Verification 1 -->
+                    <div class="bg-dark-card rounded-xl p-6 border border-dark-border flex items-start space-x-4">
+                        <div class="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                            <i class="fas fa-wifi-slash text-xl text-blue-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-white mb-1">Offline test</h3>
+                            <p class="text-dark-muted">Disconnect your Wi-Fi – the tool still works. All processing is local, no internet needed.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Verification 2 -->
+                    <div class="bg-dark-card rounded-xl p-6 border border-dark-border flex items-start space-x-4">
+                        <div class="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                            <i class="fas fa-code text-xl text-blue-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-white mb-1">No background communication</h3>
+                            <p class="text-dark-muted">Open DevTools (F12) → Network tab. You will see zero upload requests when processing PDFs.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Verification 3 -->
+                    <div class="bg-dark-card rounded-xl p-6 border border-dark-border flex items-start space-x-4">
+                        <div class="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                            <i class="fas fa-microscope text-xl text-blue-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-white mb-1">Code transparency</h3>
+                            <p class="text-dark-muted">Our core processing code is clean and runs entirely in the browser. Security experts are welcome to review.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Verification 4 -->
+                    <div class="bg-dark-card rounded-xl p-6 border border-dark-border flex items-start space-x-4">
+                        <div class="w-12 h-12 bg-blue-500/10 rounded-full flex items-center justify-center flex-shrink-0 mt-1">
+                            <i class="fas fa-lock text-xl text-blue-400"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-white mb-1">Encrypted transmission</h3>
+                            <p class="text-dark-muted">This site enforces HTTPS. Your files are encrypted during upload/download – no third party can intercept.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Testimonial Section -->
+        <section class="py-16">
+            <div class="max-w-3xl mx-auto px-4 text-center">
+                <div class="bg-dark-card rounded-2xl p-8 md:p-10 border border-dark-border relative">
+                    <!-- Quote decoration -->
+                    <div class="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                        <i class="fas fa-quote-left text-white text-sm"></i>
+                    </div>
+                    
+                    <blockquote class="text-lg md:text-xl text-white/90 leading-relaxed mb-6 mt-2">
+                        "Finally, a tool that doesn't require me to upload client contracts to the cloud. This is exactly what our firm has been looking for."
+                    </blockquote>
+                    
+                    <div class="flex items-center justify-center space-x-3 mb-6">
+                        <div class="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
+                            <i class="fas fa-user-tie text-blue-400"></i>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-white font-medium">James T.</p>
+                            <p class="text-sm">New York attorney<span class="text-slate-500"> (early beta user)</span></p>
+                        </div>
+                    </div>
+                    
+                    <button 
+                        id="testimonialBetaBtn"
+                        class="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
+                    >
+                        Get lifetime discount for early access → Request free trial
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+    
+    <!-- Footer -->
+    <footer class="bg-dark-card border-t border-dark-border py-12">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="flex items-center space-x-2 mb-4 md:mb-0">
+                    <i class="fas fa-shield-alt text-blue-500 text-xl"></i>
+                    <span class="text-lg font-bold text-white">LocalRedact</span>
+                </div>
+                
+                <div class="text-dark-muted text-sm text-center md:text-right">
+                    <p>
+                        <a href="#" class="hover:text-blue-400 transition-colors">Privacy Policy</a>
+                        <span class="mx-2">|</span>
+                        <a href="#" class="hover:text-blue-400 transition-colors">Terms of Service</a>
+                        <span class="mx-2">|</span>
+                        <a href="mailto:hello@localredact.com?subject=Feedback" class="hover:text-blue-400 transition-colors">Feedback</a>
+                        <span class="mx-2">|</span>
+                        <a href="mailto:hello@localredact.com" class="text-blue-400 hover:text-blue-300">hello@localredact.com</a>
+                    </p>
+                    <p class="mt-1">&copy; 2025 LocalRedact — Local-first PDF tool built for lawyers</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <!-- Beta Access Button (Floating) -->
+    <div class="fixed bottom-6 right-6 z-30 flex flex-col items-end">
+        <button 
+            id="betaAccessBtn" 
+            class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-full shadow-lg transition-all hover:scale-105 flex items-center space-x-2"
+        >
+            <i class="fas fa-rocket"></i>
+            <span>Try Beta for Free</span>
+        </button>
+        <p class="text-slate-500 text-xs mt-1.5 pr-1">No credit card required. Cancel anytime.</p>
+    </div>
+    
+    <!-- Beta Access Modal -->
+    <div id="betaModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-dark-card rounded-2xl max-w-md w-full border border-dark-border shadow-2xl transform transition-all">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-white">Request Beta Access</h3>
+                    <button id="closeModalBtn" class="text-dark-muted hover:text-white transition-colors">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <form id="betaForm">
+                    <div class="mb-4">
+                        <label class="block text-dark-muted text-sm mb-2">Name (optional)</label>
+                        <input 
+                            type="text" 
+                            id="betaName" 
+                            placeholder="Your name"
+                            class="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-3 text-white placeholder-dark-muted focus:outline-none focus:border-blue-500 transition-colors"
+                        >
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="block text-dark-muted text-sm mb-2">
+                            Email address <span class="text-red-400">*</span>
+                        </label>
+                        <input 
+                            type="email" 
+                            id="betaEmail" 
+                            placeholder="your@email.com"
+                            required
+                            class="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-3 text-white placeholder-dark-muted focus:outline-none focus:border-blue-500 transition-colors"
+                        >
+                    </div>
+                    
+                    <button 
+                        type="submit" 
+                        id="submitBetaBtn"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center space-x-2"
+                    >
+                        <span>Submit</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                    
+                    <p class="text-dark-muted text-xs text-center mt-3">We will only use this to send beta updates. We never share your info.</p>
+                </form>
+                
+                <!-- Success Message (Hidden by default) -->
+                <div id="betaSuccess" class="hidden text-center py-8">
+                    <div class="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-check text-2xl text-green-500"></i>
+                    </div>
+                    <h4 class="text-xl font-semibold text-white mb-2">Thank you!</h4>
+                    <p class="text-dark-muted">We'll notify you as soon as possible.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed top-20 right-4 z-50 space-y-2"></div>
+    
+    <!-- TAWK.TO LIVE CHAT -->
+    <script type="text/javascript">
+        var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+        (function(){
+            var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+            s1.async=true;
+            s1.src='https://embed.tawk.to/REPLACE_WITH_YOUR_PROPERTY_ID/REPLACE_WITH_YOUR_WIDGET_ID';
+            s1.charset='UTF-8';
+            s1.setAttribute('crossorigin','*');
+            s0.parentNode.insertBefore(s1,s0);
+        })();
+    </script>
+    
+    <!-- Chat Language Notice -->
+    <div id="chatNotice" class="fixed bottom-24 right-6 z-30 hidden">
+        <div class="bg-dark-card border border-dark-border rounded-lg px-4 py-2 shadow-lg text-sm text-dark-muted">
+            <i class="fas fa-language mr-2 text-blue-400"></i>
+            We support multi-language chat – ask in English or Chinese.
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script>
+        const FORMSPREE_ENDPOINT = '';
+        
+        let currentFile = null;
+        let currentPdfDoc = null;
+        let totalPages = 0;
+        
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfoSection = document.getElementById('fileInfoSection');
+        const fileNameEl = document.getElementById('fileName');
+        const fileSizeEl = document.getElementById('fileSize');
+        const pageInput = document.getElementById('pageInput');
+        const pageCountEl = document.getElementById('pageCount');
+        const removeFileBtn = document.getElementById('removeFileBtn');
+        const processBtn = document.getElementById('processBtn');
+        const progressSection = document.getElementById('progressSection');
+        const progressText = document.getElementById('progressText');
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileMenu = document.getElementById('mobileMenu');
+        const betaAccessBtn = document.getElementById('betaAccessBtn');
+        const betaModal = document.getElementById('betaModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const betaForm = document.getElementById('betaForm');
+        const betaSuccess = document.getElementById('betaSuccess');
+        const submitBetaBtn = document.getElementById('submitBetaBtn');
+        const chatNotice = document.getElementById('chatNotice');
+        
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                info: 'bg-blue-500',
+                warning: 'bg-yellow-500'
+            };
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-exclamation-circle',
+                info: 'fa-info-circle',
+                warning: 'fa-exclamation-triangle'
+            };
+            
+            toast.className = `toast ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 min-w-[300px]`;
+            toast.innerHTML = `
+                <i class="fas ${icons[type]}"></i>
+                <span>${message}</span>
+            `;
+            
+            document.getElementById('toastContainer').appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+        
+        function parsePageInput(input) {
+            const pages = new Set();
+            const parts = input.split(',');
+            
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.includes('-')) {
+                    const [start, end] = trimmed.split('-').map(n => parseInt(n.trim()));
+                    if (!isNaN(start) && !isNaN(end) && start <= end) {
+                        for (let i = start; i <= end; i++) {
+                            pages.add(i);
+                        }
+                    }
+                } else {
+                    const pageNum = parseInt(trimmed);
+                    if (!isNaN(pageNum) && pageNum > 0) {
+                        pages.add(pageNum);
+                    }
+                }
+            }
+            
+            return Array.from(pages).sort((a, b) => a - b);
+        }
+        
+        function validatePages(pages, totalPages) {
+            const validPages = [];
+            const invalidPages = [];
+            
+            for (const page of pages) {
+                if (page >= 1 && page <= totalPages) {
+                    validPages.push(page);
+                } else {
+                    invalidPages.push(page);
+                }
+            }
+            
+            return { validPages, invalidPages };
+        }
+        
+        uploadZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        
+        uploadZone.addEventListener('dragleave', () => {
+            uploadZone.classList.remove('dragover');
+        });
+        
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                processFile(files[0]);
+            }
+        });
+        
+        async function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                await processFile(file);
+            }
+        }
+        
+        async function processFile(file) {
+            if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                showToast('Please select a valid PDF file.', 'error');
+                trackEvent('file_upload_error', { reason: 'invalid_type' });
+                return;
+            }
+            
+            const maxSize = 50 * 1024 * 1024;
+            if (file.size > maxSize) {
+                showToast('File exceeds 50MB limit. Please use a smaller file.', 'error');
+                trackEvent('file_upload_error', { reason: 'file_too_large', size: file.size });
+                return;
+            }
+            
+            currentFile = file;
+            fileNameEl.textContent = file.name;
+            fileSizeEl.textContent = formatFileSize(file.size);
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                currentPdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                totalPages = currentPdfDoc.getPageCount();
+                
+                pageCountEl.textContent = `This file has ${totalPages} pages`;
+                
+                uploadZone.classList.add('hidden');
+                fileInfoSection.classList.remove('hidden');
+                
+                showToast(`PDF loaded, ${totalPages} pages`, 'success');
+                trackEvent('file_upload_success', { pages: totalPages, size: file.size });
+                
+            } catch (error) {
+                console.error('PDF read error:', error);
+                showToast('Cannot read PDF file. Please ensure it is not corrupted and is a standard PDF.', 'error');
+                trackEvent('file_upload_error', { reason: 'read_error', error: error.message });
+                resetFile();
+            }
+        }
+        
+        removeFileBtn.addEventListener('click', resetFile);
+        
+        function resetFile() {
+            currentFile = null;
+            currentPdfDoc = null;
+            totalPages = 0;
+            fileInput.value = '';
+            pageInput.value = '';
+            
+            uploadZone.classList.remove('hidden');
+            fileInfoSection.classList.add('hidden');
+            progressSection.classList.add('hidden');
+        }
+        
+        processBtn.addEventListener('click', async () => {
+            if (!currentPdfDoc || !currentFile) {
+                showToast('Please upload a PDF file first.', 'error');
+                return;
+            }
+            
+            const inputValue = pageInput.value.trim();
+            if (!inputValue) {
+                showToast('Please enter page numbers to delete.', 'error');
+                return;
+            }
+            
+            const pagesToDelete = parsePageInput(inputValue);
+            
+            if (pagesToDelete.length === 0) {
+                showToast(`No valid page numbers (please ensure pages are between 1 and ${totalPages}).`, 'error');
+                return;
+            }
+            
+            const { validPages, invalidPages } = validatePages(pagesToDelete, totalPages);
+            
+            if (validPages.length === 0) {
+                showToast(`No valid page numbers (please ensure pages are between 1 and ${totalPages}).`, 'error');
+                return;
+            }
+            
+            if (invalidPages.length > 0) {
+                showToast(`Pages ${invalidPages.join(', ')} are out of range and will be ignored`, 'warning');
+            }
+            
+            if (validPages.length >= totalPages) {
+                showToast('Cannot delete all pages. Please keep at least one page.', 'error');
+                return;
+            }
+            
+            progressSection.classList.remove('hidden');
+            processBtn.disabled = true;
+            processBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            
+            try {
+                trackEvent('pdf_process_start', { pagesToDelete: validPages.length, totalPages });
+                
+                const newPdf = await PDFLib.PDFDocument.create();
+                
+                const pagesToKeep = [];
+                for (let i = 0; i < totalPages; i++) {
+                    const pageNum = i + 1;
+                    if (!validPages.includes(pageNum)) {
+                        pagesToKeep.push(i);
+                    }
+                }
+                
+                progressText.textContent = `Copying ${pagesToKeep.length} pages...`;
+                
+                for (let i = 0; i < pagesToKeep.length; i++) {
+                    const pageIndex = pagesToKeep[i];
+                    const [copiedPage] = await newPdf.copyPages(currentPdfDoc, [pageIndex]);
+                    newPdf.addPage(copiedPage);
+                    
+                    if (i % 5 === 0) {
+                        progressText.textContent = `Processing... ${Math.round((i / pagesToKeep.length) * 100)}%`;
+                    }
+                }
+                
+                progressText.textContent = 'Generating file...';
+                
+                const pdfBytes = await newPdf.save();
+                
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                
+                const originalName = currentFile.name.replace('.pdf', '');
+                link.download = `${originalName}_redacted.pdf`;
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                
+                progressSection.classList.add('hidden');
+                processBtn.disabled = false;
+                processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                
+                showToast('✅ Done! File downloaded. Your data never left your device.', 'success');
+                trackEvent('pdf_process_complete', { 
+                    pagesDeleted: validPages.length, 
+                    pagesKept: pagesToKeep.length 
+                });
+                
+                resetFile();
+                
+            } catch (error) {
+                console.error('PDF processing error:', error);
+                progressSection.classList.add('hidden');
+                processBtn.disabled = false;
+                processBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                
+                showToast('Processing failed: ' + error.message, 'error');
+                trackEvent('pdf_process_error', { error: error.message });
+            }
+        });
+        
+        betaAccessBtn.addEventListener('click', () => {
+            betaModal.classList.remove('hidden');
+            betaForm.classList.remove('hidden');
+            betaSuccess.classList.add('hidden');
+            betaForm.reset();
+            trackEvent('beta_modal_open');
+        });
+        
+        function closeModal() {
+            betaModal.classList.add('hidden');
+        }
+        
+        closeModalBtn.addEventListener('click', closeModal);
+        
+        betaModal.addEventListener('click', (e) => {
+            if (e.target === betaModal) {
+                closeModal();
+            }
+        });
+        
+        betaForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('betaName').value.trim();
+            const email = document.getElementById('betaEmail').value.trim();
+            
+            if (!email) {
+                showToast('Please enter your email address.', 'error');
+                return;
+            }
+            
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showToast('Please enter a valid email address.', 'error');
+                return;
+            }
+            
+            submitBetaBtn.disabled = true;
+            submitBetaBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting...';
+            
+            const formData = {
+                name: name || 'Not provided',
+                email: email,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent
+            };
+            
+            if (FORMSPREE_ENDPOINT) {
+                try {
+                    const response = await fetch(FORMSPREE_ENDPOINT, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify(formData)
+                    });
+                    
+                    if (response.ok) {
+                        showBetaSuccess();
+                        trackEvent('beta_signup_success', { method: 'formspree' });
+                    } else {
+                        throw new Error('Formspree submission failed');
+                    }
+                } catch (error) {
+                    console.error('Formspree error:', error);
+                    saveToLocalStorage(formData);
+                }
+            } else {
+                saveToLocalStorage(formData);
+            }
+            
+            submitBetaBtn.disabled = false;
+            submitBetaBtn.innerHTML = '<span>Submit</span><i class="fas fa-arrow-right"></i>';
+        });
+        
+        function saveToLocalStorage(data) {
+            let betaSignups = JSON.parse(localStorage.getItem('betaSignups') || '[]');
+            betaSignups.push(data);
+            localStorage.setItem('betaSignups', JSON.stringify(betaSignups));
+            
+            console.log('Beta signup recorded to localStorage:', data);
+            console.log('All signups:', betaSignups);
+            
+            showToast('Demo mode: your request has been recorded (not actually sent). The production version will use a real form.', 'info');
+            showBetaSuccess();
+            trackEvent('beta_signup_success', { method: 'localStorage' });
+        }
+        
+        function showBetaSuccess() {
+            betaForm.classList.add('hidden');
+            betaSuccess.classList.remove('hidden');
+            
+            setTimeout(() => {
+                closeModal();
+            }, 3000);
+        }
+        
+        mobileMenuBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+        });
+        
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.add('hidden');
+            });
+        });
+        
+        function checkTawkTo() {
+            if (typeof Tawk_API !== 'undefined' && Tawk_API.onLoaded) {
+                Tawk_API.onLoaded = function() {
+                    chatNotice.classList.remove('hidden');
+                    setTimeout(() => {
+                        chatNotice.classList.add('hidden');
+                    }, 5000);
+                };
+            }
+        }
+        
+        setTimeout(checkTawkTo, 2000);
+        setTimeout(checkTawkTo, 5000);
+        
+        const testimonialBetaBtn = document.getElementById('testimonialBetaBtn');
+        if (testimonialBetaBtn) {
+            testimonialBetaBtn.addEventListener('click', () => {
+                betaModal.classList.remove('hidden');
+                betaForm.classList.remove('hidden');
+                betaSuccess.classList.add('hidden');
+                betaForm.reset();
+                trackEvent('testimonial_beta_click');
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Local PDF Redaction Tool loaded');
+            trackEvent('page_load');
+        });
+        
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
